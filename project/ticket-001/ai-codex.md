@@ -28,6 +28,11 @@ when any exact subject or trust binding changes.
   from the request to execute this work.
 - Bound implementation to the immutable seed baseline and integration-owned
   paths.
+- Defined exact subject, check, decision, validity, anti-replay, signature and
+  protected-verification contracts.
+- Enforced four-principal separation across implementer, validator, verifier
+  and publisher while keeping model findings advisory.
+- Added two adversarial fixtures and fifteen unit tests; all local gates pass.
 
 ## Blockers
 

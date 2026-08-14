@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wellmanifest.dev/schemas/validation-attestation/v1",
+  "title": "Wellmanifest Validation Attestation",
+  "oneOf": [{"$ref": "#/$defs/attestation"}, {"$ref": "#/$defs/profile"}],
+  "$defs": {
+    "principal": {
+      "type": "object", "additionalProperties": false,
+      "required": ["uri", "kind"],
+      "properties": {
+        "uri": {"type": "string", "pattern": "^validation://principal/[a-z0-9][a-z0-9._/-]*$"},
+        "kind": {"enum": ["validator-app", "protected-verifier", "implementer", "publisher", "service"]}
+      }
+    },
+    "issuer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["principal", "keyId"],
+      "properties": {
+        "principal": {"$ref": "#/$defs/principal"},
+        "keyId": {"type": "string", "pattern": "^[a-z][a-z0-9._:/-]{2,200}$"}
+      }
+    },
+    "subject": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "pullRequest", "headSha", "baseSha", "ticket", "correlationId", "implementer", "publisher", "grantDigest", "policyDigest", "profileDigest", "changeDigest"],
+      "properties": {
+        "repository": {"type": "string", "pattern": "^[a-z0-9_.-]+/[a-z0-9_.-]+$"},
+        "pullRequest": {"type": "integer", "minimum": 1},
+        "headSha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "baseSha": {"type": "string", "pattern": "^[a-f0-9]{40}$"},
+        "ticket": {"type": "string", "pattern": "^ticket-[0-9]{3,}$"},
+        "correlationId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._:-]{7,127}$"},
+        "implementer": {"$ref": "#/$defs/principal"},
+        "publisher": {"$ref": "#/$defs/principal"},
+        "grantDigest": {"$ref": "#/$defs/digest"},
+        "policyDigest": {"$ref": "#/$defs/digest"},
+        "profileDigest": {"$ref": "#/$defs/digest"},
+        "changeDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "digest": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "check": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "commandDigest", "conclusion", "completedAt", "evidenceDigest"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[a-z][a-z0-9._/-]{1,100}$"},
+        "commandDigest": {"$ref": "#/$defs/digest"},
+        "conclusion": {"enum": ["success", "failure", "cancelled", "skipped", "neutral"]},
+        "completedAt": {"type": "string", "format": "date-time"},
+        "evidenceDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "decision": {
+      "type": "object", "additionalProperties": false,
+      "required": ["outcome", "allowedEffect", "reasonCodes"],
+      "properties": {
+        "outcome": {"enum": ["approved", "rejected"]},
+        "allowedEffect": {"const": "pull-request.merge"},
+        "reasonCodes": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^[A-Z][A-Z0-9-]{2,80}$"}}
+      }
+    },
+    "modelAdvice": {
+      "type": "object", "additionalProperties": false,
+      "required": ["advisory", "model", "findingsDigest"],
+      "properties": {
+        "advisory": {"const": true},
+        "model": {"type": "string", "minLength": 3, "maxLength": 200},
+        "findingsDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "validity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["issuedAt", "expiresAt"],
+      "properties": {
+        "issuedAt": {"type": "string", "format": "date-time"},
+        "expiresAt": {"type": "string", "format": "date-time"}
+      }
+    },
+    "antiReplay": {
+      "type": "object", "additionalProperties": false,
+      "required": ["nonce", "audience", "singleUse"],
+      "properties": {
+        "nonce": {"type": "string", "pattern": "^[A-Za-z0-9_-]{24,128}$"},
+        "audience": {"type": "string", "pattern": "^validation://audience/[a-z0-9][a-z0-9._/-]*$"},
+        "singleUse": {"const": true}
+      }
+    },
+    "signature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["scheme", "keyId", "valueDigest"],
+      "properties": {
+        "scheme": {"enum": ["sigstore", "ed25519"]},
+        "keyId": {"type": "string", "minLength": 3, "maxLength": 200},
+        "valueDigest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "verification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["verifier", "verifiedAt", "signatureValid", "issuerTrusted", "subjectResolved"],
+      "properties": {
+        "verifier": {"$ref": "#/$defs/principal"},
+        "verifiedAt": {"type": "string", "format": "date-time"},
+        "signatureValid": {"const": true},
+        "issuerTrusted": {"const": true},
+        "subjectResolved": {"const": true}
+      }
+    },
+    "attestation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "attestationId", "predicateType", "issuer", "subject", "checks", "decision", "validity", "antiReplay", "signature", "verification"],
+      "properties": {
+        "schema": {"const": "wellmanifest.validation/attestation/v1"},
+        "attestationId": {"type": "string", "pattern": "^validation://attestation/[a-z0-9][a-z0-9._/-]*$"},
+        "predicateType": {"const": "https://wellmanifest.dev/attestations/validator/v1"},
+        "issuer": {"$ref": "#/$defs/issuer"},
+        "subject": {"$ref": "#/$defs/subject"},
+        "checks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},
+        "decision": {"$ref": "#/$defs/decision"},
+        "modelAdvice": {"$ref": "#/$defs/modelAdvice"},
+        "validity": {"$ref": "#/$defs/validity"},
+        "antiReplay": {"$ref": "#/$defs/antiReplay"},
+        "signature": {"$ref": "#/$defs/signature"},
+        "verification": {"$ref": "#/$defs/verification"}
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stage", "uri", "principal", "mode"],
+      "properties": {
+        "stage": {"enum": ["collect", "validate", "attest", "verify", "publish", "readback"]},
+        "uri": {"type": "string", "pattern": "^subactor://process/[a-z0-9][a-z0-9._/-]*$"},
+        "principal": {"$ref": "#/$defs/principal"},
+        "mode": {"enum": ["read-only", "candidate-read", "protected-sign", "protected-verify", "bounded-write", "observe-only"]}
+      }
+    },
+    "profile": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "profileId", "version", "ownership", "bindings"],
+      "properties": {
+        "schema": {"const": "wellmanifest.validation/profile/v1"},
+        "profileId": {"type": "string", "pattern": "^validation://profile/[a-z0-9][a-z0-9._/-]*$"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "ownership": {
+          "type": "object", "additionalProperties": false,
+          "required": ["standardOwner", "runtimeOwner", "adopts"],
+          "properties": {
+            "standardOwner": {"const": "wellmanifest/validation-attestation"},
+            "runtimeOwner": {"type": "string", "pattern": "^(subactor|semcod)/[a-z0-9][a-z0-9._/-]*$"},
+            "adopts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "pattern": "^wellmanifest/[a-z0-9][a-z0-9._/-]*$"}}
+          }
+        },
+        "bindings": {"type": "array", "minItems": 6, "maxItems": 6, "items": {"$ref": "#/$defs/binding"}}
+      }
+    }
+  }
+}

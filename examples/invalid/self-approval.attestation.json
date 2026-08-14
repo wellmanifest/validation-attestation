@@ -1,0 +1,8 @@
+{
+  "schema": "wellmanifest.validation/invalid-case/v1",
+  "base": "../valid/subactor-pr-attestation.json",
+  "mutations": [
+    {"op": "replace", "path": "/issuer/principal", "value": {"uri": "validation://principal/subactor-coding-agent", "kind": "implementer"}}
+  ],
+  "expectedCodes": ["ATTEST-INDEPENDENCE-001"]
+}

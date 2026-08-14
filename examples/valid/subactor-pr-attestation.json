@@ -1,0 +1,40 @@
+{
+  "schema": "wellmanifest.validation/attestation/v1",
+  "attestationId": "validation://attestation/subactor/pr-42-head-a",
+  "predicateType": "https://wellmanifest.dev/attestations/validator/v1",
+  "issuer": {
+    "principal": {"uri": "validation://principal/subactor-validator-app", "kind": "validator-app"},
+    "keyId": "sigstore://wellmanifest/subactor-validator-app"
+  },
+  "subject": {
+    "repository": "wellmanifest/example",
+    "pullRequest": 42,
+    "headSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "baseSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "ticket": "ticket-042",
+    "correlationId": "subactor-pr-42-aaaaaaaa",
+    "implementer": {"uri": "validation://principal/subactor-coding-agent", "kind": "implementer"},
+    "publisher": {"uri": "validation://principal/subactor-pr-publisher", "kind": "publisher"},
+    "grantDigest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "policyDigest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "profileDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "changeDigest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "checks": [
+    {"name": "governance", "commandDigest": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "conclusion": "success", "completedAt": "2026-08-14T12:00:00Z", "evidenceDigest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"},
+    {"name": "unit", "commandDigest": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "conclusion": "success", "completedAt": "2026-08-14T12:01:00Z", "evidenceDigest": "sha256:8888888888888888888888888888888888888888888888888888888888888888"},
+    {"name": "security", "commandDigest": "sha256:9999999999999999999999999999999999999999999999999999999999999999", "conclusion": "success", "completedAt": "2026-08-14T12:02:00Z", "evidenceDigest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+  ],
+  "decision": {"outcome": "approved", "allowedEffect": "pull-request.merge", "reasonCodes": []},
+  "modelAdvice": {"advisory": true, "model": "openrouter/z-ai/glm-5.2", "findingsDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+  "validity": {"issuedAt": "2026-08-14T12:03:00Z", "expiresAt": "2026-08-14T13:03:00Z"},
+  "antiReplay": {"nonce": "Rk9LLU5PTkNFLUVYQU1QTEUtMDAx", "audience": "validation://audience/subactor-pr-publisher", "singleUse": true},
+  "signature": {"scheme": "sigstore", "keyId": "sigstore://wellmanifest/subactor-validator-app", "valueDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+  "verification": {
+    "verifier": {"uri": "validation://principal/subactor-attestation-verifier", "kind": "protected-verifier"},
+    "verifiedAt": "2026-08-14T12:04:00Z",
+    "signatureValid": true,
+    "issuerTrusted": true,
+    "subjectResolved": true
+  }
+}

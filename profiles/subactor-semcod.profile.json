@@ -1,0 +1,18 @@
+{
+  "schema": "wellmanifest.validation/profile/v1",
+  "profileId": "validation://profile/subactor-semcod/code-publication",
+  "version": "1.0.0",
+  "ownership": {
+    "standardOwner": "wellmanifest/validation-attestation",
+    "runtimeOwner": "subactor/autonom",
+    "adopts": ["wellmanifest/autonomy", "wellmanifest/authority-lifecycle", "wellmanifest/git-lifecycle"]
+  },
+  "bindings": [
+    {"stage": "collect", "uri": "subactor://process/validation/collect", "principal": {"uri": "validation://principal/evidence-collector", "kind": "service"}, "mode": "read-only"},
+    {"stage": "validate", "uri": "subactor://process/validation/exact-head", "principal": {"uri": "validation://principal/subactor-validator-app", "kind": "validator-app"}, "mode": "candidate-read"},
+    {"stage": "attest", "uri": "subactor://process/validation/attest", "principal": {"uri": "validation://principal/subactor-validator-app", "kind": "validator-app"}, "mode": "protected-sign"},
+    {"stage": "verify", "uri": "subactor://process/validation/verify", "principal": {"uri": "validation://principal/subactor-attestation-verifier", "kind": "protected-verifier"}, "mode": "protected-verify"},
+    {"stage": "publish", "uri": "subactor://process/pull-request/merge", "principal": {"uri": "validation://principal/subactor-pr-publisher", "kind": "publisher"}, "mode": "bounded-write"},
+    {"stage": "readback", "uri": "subactor://process/pull-request/readback", "principal": {"uri": "validation://principal/subactor-readback", "kind": "service"}, "mode": "observe-only"}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "schema": "wellmanifest.validation/invalid-case/v1",
+  "base": "../valid/subactor-pr-attestation.json",
+  "mutations": [
+    {"op": "replace", "path": "/checks/1/conclusion", "value": "failure"}
+  ],
+  "expectedCodes": ["ATTEST-DECISION-001"]
+}
