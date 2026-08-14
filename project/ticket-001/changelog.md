@@ -9,3 +9,5 @@
 - Added the normative standard, closed schema, Subactor/Semcod profile,
   dependency-free checker, adversarial fixtures and tests.
 - Verified local acceptance criteria and moved the ticket to publication.
+- Closed after exact-head Validator App review, merge and branch-deletion
+  readback proved independent publication of the current standard tree.
