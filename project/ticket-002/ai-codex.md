@@ -26,6 +26,8 @@ approval and merge remain exclusively owned by the protected Validator App.
 - Bound the change to one infrastructure workflow and ticket evidence.
 - Added the pinned `standards / attestation conformance` hosted check.
 - Passed 15 unit tests, checker self-test, compilation, Ruff and governance.
+- Published PR #2 with exact ticket/correlation metadata and activated
+  ruleset `20856109` without bypass actors.
 
 ## Blockers
 
