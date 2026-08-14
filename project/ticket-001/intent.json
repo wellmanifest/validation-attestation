@@ -1,0 +1,68 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-001",
+  "summary": "Define exact-subject validation attestation standard",
+  "workstream": "integration",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-001/**", "TODO.md", "project/TICKETS.md",
+    "spec/**", "schemas/**", "profiles/**", "examples/**",
+    "src/**", "tests/**", "docs/**", "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md", ".governance/**", "AGENTS.md",
+    "README.md", "CHANGELOG.md", "VERSION", ".github/**", "project.sh",
+    "project.bat", "project/governance-check.*", "project/new-ticket.sh",
+    "project/readme.sh", "scripts/runtime.sh"
+  ],
+  "stacks": ["python"],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "992481c68a939338f1c66ac04cee9a4e1c3e407e",
+    "targetBranch": "main",
+    "outcome": "A replay-resistant exact-subject validation attestation that can safely replace routine human pull-request approval within a bounded autonomy grant.",
+    "nonGoals": [
+      "Implement cryptographic signing, GitHub Apps or merge automation",
+      "Treat model output or repository-authored evidence as trusted approval",
+      "Permit a validator to validate its own implementation or publish its own decision",
+      "Authorize a different head, base, ticket, policy, grant or profile than attested",
+      "Merge this standard without independent current-head approval"
+    ],
+    "complexity": "L",
+    "estimatedMinutes": 30,
+    "budgets": {"maxImplementationFiles": 15, "maxAffectedComponents": 5, "maxPublicInterfaceChanges": 3, "maxRuntimeDependencies": 0},
+    "architecture": {
+      "status": "accepted",
+      "decision": "Standardize a protected validator attestation whose approval is exact-subject, short-lived, single-use, independently issued and independently verified before publication.",
+      "components": [
+        {"name": "normative-contracts", "paths": ["spec/**", "schemas/**", "profiles/**"]},
+        {"name": "conformance", "paths": ["examples/**", "src/**", "tests/**", "pyproject.toml"]},
+        {"name": "guidance", "paths": ["docs/**"]}
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Introduce wellmanifest.validation/attestation/v1",
+        "Introduce wellmanifest.validation/profile/v1",
+        "Define exact-head protected merge-attestation semantics"
+      ],
+      "dataChanges": [
+        "Bind candidate, authority, policy and validation evidence digests",
+        "Define short-lived single-use signed verification records"
+      ],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Remove ticket-owned implementation paths while preserving the governed baseline."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {"criterion": "AC-08", "commands": ["python3 -m unittest discover -s tests -v"], "evidence": "project/ticket-001/ai-codex-logs.txt"},
+      {"criterion": "AC-06", "commands": ["python3 src/attestation_check.py self-test"], "evidence": "project/ticket-001/ai-codex-logs.txt"},
+      {"criterion": "AC-10", "commands": ["./project/governance-check.sh --actor agent", "python3 -m compileall -q src tests", "ruff check src tests"], "evidence": "project/ticket-001/ai-codex-logs.txt"}
+    ]
+  }
+}
