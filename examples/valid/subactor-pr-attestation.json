@@ -1,7 +1,7 @@
 {
   "schema": "wellmanifest.validation/attestation/v1",
   "attestationId": "validation://attestation/subactor/pr-42-head-a",
-  "predicateType": "https://wellmanifest.dev/attestations/validator/v1",
+  "predicateType": "https://wellmanifest.com/attestations/validator/v1",
   "issuer": {
     "principal": {"uri": "validation://principal/subactor-validator-app", "kind": "validator-app"},
     "keyId": "sigstore://wellmanifest/subactor-validator-app"
