@@ -224,7 +224,7 @@ def _validate_attestation(
     attestation = _closed(document, "", required, allowed, findings)
     if attestation is None:
         return findings
-    if attestation.get("predicateType") != "https://wellmanifest.dev/attestations/validator/v1":
+    if attestation.get("predicateType") != "https://wellmanifest.com/attestations/validator/v1":
         _add(findings, SIGNATURE, "/predicateType", "unsupported predicate type")
 
     issuer_data = _closed(

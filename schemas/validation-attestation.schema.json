@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://wellmanifest.dev/schemas/validation-attestation/v1",
+  "$id": "https://wellmanifest.com/schemas/validation-attestation/v1",
   "title": "Wellmanifest Validation Attestation",
   "oneOf": [{"$ref": "#/$defs/attestation"}, {"$ref": "#/$defs/profile"}],
   "$defs": {
@@ -111,7 +111,7 @@
       "properties": {
         "schema": {"const": "wellmanifest.validation/attestation/v1"},
         "attestationId": {"type": "string", "pattern": "^validation://attestation/[a-z0-9][a-z0-9._/-]*$"},
-        "predicateType": {"const": "https://wellmanifest.dev/attestations/validator/v1"},
+        "predicateType": {"const": "https://wellmanifest.com/attestations/validator/v1"},
         "issuer": {"$ref": "#/$defs/issuer"},
         "subject": {"$ref": "#/$defs/subject"},
         "checks": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/check"}},
