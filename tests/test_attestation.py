@@ -4,6 +4,7 @@ import copy
 import importlib.util
 import json
 import sys
+import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -62,11 +63,85 @@ class AttestationConformanceTests(unittest.TestCase):
         mutation = copy.deepcopy(self.valid)
         mutation["verification"]["verifier"] = mutation["issuer"]["principal"]
         self.assertIn(attestation_check.INDEPENDENCE, self.codes(mutation))
+        mutation = copy.deepcopy(self.valid)
+        mutation["verification"]["verifier"] = {
+            "uri": mutation["subject"]["implementer"]["uri"],
+            "kind": "protected-verifier",
+        }
+        self.assertIn(attestation_check.INDEPENDENCE, self.codes(mutation))
 
     def test_approved_decision_requires_all_checks_successful(self) -> None:
         mutation = copy.deepcopy(self.valid)
         mutation["checks"][0]["conclusion"] = "skipped"
         self.assertIn(attestation_check.DECISION, self.codes(mutation))
+
+    def test_unknown_decision_outcome_and_unhashable_reasons_fail_closed(self) -> None:
+        for forged_outcome in ("bypass", "pending", None, 1):
+            mutation = copy.deepcopy(self.valid)
+            mutation["decision"]["outcome"] = forged_outcome
+            self.assertIn(attestation_check.DECISION, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["decision"] = {
+            "outcome": "rejected",
+            "allowedEffect": "pull-request.merge",
+            "reasonCodes": [{"nested": "object"}],
+        }
+        self.assertIn(attestation_check.DECISION, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["decision"] = {
+            "outcome": "rejected",
+            "allowedEffect": "pull-request.merge",
+            "reasonCodes": ["bad lowercase reason"],
+        }
+        self.assertIn(attestation_check.DECISION, self.codes(mutation))
+
+    def test_boolean_pr_and_invalid_subject_identifiers_rejected(self) -> None:
+        mutation = copy.deepcopy(self.valid)
+        mutation["subject"]["pullRequest"] = True
+        self.assertIn(attestation_check.SUBJECT, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["subject"]["ticket"] = "42"
+        self.assertIn(attestation_check.SUBJECT, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["subject"]["correlationId"] = "short"
+        self.assertIn(attestation_check.SUBJECT, self.codes(mutation))
+
+    def test_invalid_timestamp_with_at_parameter_does_not_crash(self) -> None:
+        at = datetime.fromisoformat("2026-08-14T12:30:00+00:00")
+        mutation = copy.deepcopy(self.valid)
+        mutation["validity"]["issuedAt"] = "2026-08-14"
+        self.assertIn(attestation_check.SYNTAX, self.codes(mutation, at=at))
+
+    def test_attestation_id_audience_conclusion_and_model_patterns(self) -> None:
+        mutation = copy.deepcopy(self.valid)
+        mutation["attestationId"] = "http://invalid/id"
+        self.assertIn(attestation_check.SYNTAX, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["antiReplay"]["audience"] = "validation://audience/"
+        self.assertIn(attestation_check.REPLAY, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["checks"][0]["conclusion"] = "unknown-state"
+        mutation["decision"]["outcome"] = "rejected"
+        mutation["decision"]["reasonCodes"] = ["CHECK-FAILED"]
+        self.assertIn(attestation_check.CHECKS, self.codes(mutation))
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["modelAdvice"]["model"] = "  "
+        self.assertIn(attestation_check.DECISION, self.codes(mutation))
+
+    def test_duplicate_json_keys_and_non_finite_numbers_fail_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            dup_path = Path(directory) / "duplicate.json"
+            dup_path.write_text('{"schema":"a","schema":"b"}\n', encoding="utf-8")
+            findings = attestation_check.load_and_validate(dup_path)
+            self.assertEqual([attestation_check.SYNTAX], [item.code for item in findings])
+            self.assertEqual(1, attestation_check.main(["validate", str(dup_path)]))
 
     def test_exact_head_and_base_are_runtime_bound(self) -> None:
         expected = {"headSha": "f" * 40, "baseSha": self.valid["subject"]["baseSha"]}
@@ -110,6 +185,15 @@ class AttestationConformanceTests(unittest.TestCase):
         attest = next(item for item in mutation["bindings"] if item["stage"] == "attest")
         publish["principal"] = attest["principal"]
         self.assertIn(attestation_check.PROFILE, self.codes(mutation))
+
+        bad_uri = copy.deepcopy(self.profile)
+        bad_uri["bindings"][0]["uri"] = "https://invalid/process"
+        self.assertIn(attestation_check.PROFILE, self.codes(bad_uri))
+
+        bad_meta = copy.deepcopy(self.profile)
+        bad_meta["profileId"] = "invalid"
+        bad_meta["version"] = "v1"
+        self.assertIn(attestation_check.PROFILE, self.codes(bad_meta))
 
     def test_schema_is_closed_draft_2020_12(self) -> None:
         schema = json.loads(

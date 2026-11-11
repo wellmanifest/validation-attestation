@@ -1,0 +1,78 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-008",
+  "summary": "Harden attestation decision, subject, profile, and JSON parsing invariants",
+  "workstream": "integration",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-008/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/attestation_check.py",
+    "tests/test_attestation.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "8eb9e2d4eae38d9f3efc71291b71baa617e1d491",
+    "targetBranch": "main",
+    "outcome": "Eliminate decision-outcome bypasses, TypeError crashes on malformed reasonCodes/timestamps, boolean pullRequest acceptance, duplicate JSON key shadowing, and unvalidated schema patterns in src/attestation_check.py with full regression coverage.",
+    "nonGoals": [
+      "Do not change schemas/validation-attestation.schema.json or profiles/subactor-semcod.profile.json wire contracts",
+      "Do not add third-party runtime dependencies",
+      "Do not modify managed .governance files"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 25,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Align src/attestation_check.py fail-closed checks with schemas/validation-attestation.schema.json, guard None timestamp comparisons and unhashable array elements, and enforce strict JSON object_pairs_hook decoding.",
+      "components": [
+        {
+          "name": "attestation-semantic-checker",
+          "paths": [
+            "src/attestation_check.py",
+            "tests/test_attestation.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the ticket commit on main to restore the prior checker implementation."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python3 -m unittest discover -s tests -v",
+          "python3 src/attestation_check.py self-test",
+          "python3 -m compileall -q src tests",
+          "./project/governance-check.sh --base origin/main"
+        ],
+        "evidence": "Unit tests, self-test, bytecode compilation, ruff, governance gate, and wellman check pass."
+      }
+    ]
+  }
+}

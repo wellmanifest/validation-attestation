@@ -30,6 +30,21 @@ PROFILE = "ATTEST-PROFILE-001"
 DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
 SHA = re.compile(r"^[a-f0-9]{40}$")
 PRINCIPAL_URI = re.compile(r"^validation://principal/[a-z0-9][a-z0-9._/-]*$")
+ATTESTATION_ID = re.compile(r"^validation://attestation/[a-z0-9][a-z0-9._/-]*$")
+AUDIENCE_URI = re.compile(r"^validation://audience/[a-z0-9][a-z0-9._/-]*$")
+PROFILE_ID = re.compile(r"^validation://profile/[a-z0-9][a-z0-9._/-]*$")
+PROCESS_URI = re.compile(r"^subactor://process/[a-z0-9][a-z0-9._/-]*$")
+ISSUER_KEY_ID = re.compile(r"^[a-z][a-z0-9._:/-]{2,200}$")
+TICKET_ID = re.compile(r"^ticket-[0-9]{3,}$")
+CORRELATION_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{7,127}$")
+REASON_CODE = re.compile(r"^[A-Z][A-Z0-9-]{2,80}$")
+SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+RUNTIME_OWNER = re.compile(r"^(subactor|semcod)/[a-z0-9][a-z0-9._/-]*$")
+ADOPT_REF = re.compile(r"^wellmanifest/[a-z0-9][a-z0-9._/-]*$")
+RFC3339 = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$"
+)
+CHECK_CONCLUSIONS = {"success", "failure", "cancelled", "skipped", "neutral"}
 PROFILE_MODES = {
     "collect": "read-only",
     "validate": "candidate-read",
@@ -54,6 +69,10 @@ SUBJECT_FIELDS = {
 }
 
 
+class _StrictJsonError(ValueError):
+    """Raised when raw JSON violates duplicate-key or finite-number rules."""
+
+
 @dataclass(frozen=True)
 class Finding:
     code: str
@@ -67,6 +86,21 @@ class Finding:
 
 def _add(findings: list[Finding], code: str, path: str, message: str) -> None:
     findings.append(Finding(code, path, message))
+
+
+def _strict_loads(raw: str) -> Any:
+    def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        obj: dict[str, Any] = {}
+        for key, value in pairs:
+            if key in obj:
+                raise _StrictJsonError(f"duplicate JSON key {key!r}")
+            obj[key] = value
+        return obj
+
+    def _no_constants(token: str) -> Any:
+        raise _StrictJsonError(f"non-finite JSON constant {token}")
+
+    return json.loads(raw, object_pairs_hook=_no_duplicates, parse_constant=_no_constants)
 
 
 def _closed(
@@ -89,11 +123,12 @@ def _closed(
 
 
 def _time(value: Any, path: str, findings: list[Finding]) -> datetime | None:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or not RFC3339.fullmatch(value):
         _add(findings, SYNTAX, path, "must be an RFC3339 timestamp")
         return None
+    normalized = value[:-1] + "+00:00" if value.endswith(("Z", "z")) else value
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(normalized)
     except ValueError:
         _add(findings, SYNTAX, path, "must be an RFC3339 timestamp")
         return None
@@ -154,8 +189,15 @@ def _validate_subject(
         r"[a-z0-9_.-]+/[a-z0-9_.-]+", repository
     ):
         _add(findings, SUBJECT, "/subject/repository", "exact owner/repository required")
-    if not isinstance(subject.get("pullRequest"), int) or subject["pullRequest"] < 1:
+    pull_request = subject.get("pullRequest")
+    if isinstance(pull_request, bool) or not isinstance(pull_request, int) or pull_request < 1:
         _add(findings, SUBJECT, "/subject/pullRequest", "positive PR number required")
+    ticket = subject.get("ticket")
+    if not isinstance(ticket, str) or not TICKET_ID.fullmatch(ticket):
+        _add(findings, SUBJECT, "/subject/ticket", "canonical ticket identifier required")
+    correlation = subject.get("correlationId")
+    if not isinstance(correlation, str) or not CORRELATION_ID.fullmatch(correlation):
+        _add(findings, SUBJECT, "/subject/correlationId", "valid correlationId required")
     for field in ("headSha", "baseSha"):
         if not isinstance(subject.get(field), str) or not SHA.fullmatch(subject[field]):
             _add(findings, SUBJECT, f"/subject/{field}", "exact 40-character SHA required")
@@ -204,7 +246,11 @@ def _validate_checks(value: Any, findings: list[Finding]) -> tuple[list[datetime
         timestamp = _time(check.get("completedAt"), f"{path}/completedAt", findings)
         if timestamp:
             completed.append(timestamp)
-        if check.get("conclusion") != "success":
+        conclusion = check.get("conclusion")
+        if conclusion not in CHECK_CONCLUSIONS:
+            _add(findings, CHECKS, f"{path}/conclusion", "invalid check conclusion")
+            all_success = False
+        elif conclusion != "success":
             all_success = False
     return completed, all_success
 
@@ -224,6 +270,9 @@ def _validate_attestation(
     attestation = _closed(document, "", required, allowed, findings)
     if attestation is None:
         return findings
+    attestation_id = attestation.get("attestationId")
+    if not isinstance(attestation_id, str) or not ATTESTATION_ID.fullmatch(attestation_id):
+        _add(findings, SYNTAX, "/attestationId", "invalid attestation identifier URI")
     if attestation.get("predicateType") != "https://wellmanifest.com/attestations/validator/v1":
         _add(findings, SIGNATURE, "/predicateType", "unsupported predicate type")
 
@@ -241,7 +290,7 @@ def _validate_attestation(
         issuer_key = issuer_data.get("keyId")
         if issuer.get("kind") != "validator-app":
             _add(findings, INDEPENDENCE, "/issuer/principal", "validator-app issuer required")
-        if not isinstance(issuer_key, str) or len(issuer_key) < 3:
+        if not isinstance(issuer_key, str) or not ISSUER_KEY_ID.fullmatch(issuer_key):
             _add(findings, SIGNATURE, "/issuer/keyId", "issuer key ID required")
 
     _, implementer, publisher = _validate_subject(attestation.get("subject"), expected, findings)
@@ -258,7 +307,10 @@ def _validate_attestation(
         findings,
     )
     if decision:
-        approved = decision.get("outcome") == "approved"
+        outcome = decision.get("outcome")
+        if outcome not in {"approved", "rejected"}:
+            _add(findings, DECISION, "/decision/outcome", "outcome must be approved or rejected")
+        approved = outcome == "approved"
         if decision.get("allowedEffect") != "pull-request.merge":
             _add(
                 findings,
@@ -267,7 +319,12 @@ def _validate_attestation(
                 "only bounded PR merge is supported",
             )
         reasons = decision.get("reasonCodes")
-        if not isinstance(reasons, list) or len(reasons) != len(set(reasons)):
+        reasons_valid = (
+            isinstance(reasons, list)
+            and all(isinstance(item, str) and REASON_CODE.fullmatch(item) for item in reasons)
+            and len(reasons) == len(set(reasons))
+        )
+        if not reasons_valid:
             _add(findings, DECISION, "/decision/reasonCodes", "unique reason code array required")
         if approved and not all_success:
             _add(
@@ -276,14 +333,14 @@ def _validate_attestation(
                 "/decision/outcome",
                 "approval requires every check to succeed",
             )
-        if approved and reasons:
+        if approved and isinstance(reasons, list) and reasons:
             _add(
                 findings,
                 DECISION,
                 "/decision/reasonCodes",
                 "approved decision has no failure reasons",
             )
-        if decision.get("outcome") == "rejected" and not reasons:
+        if outcome == "rejected" and isinstance(reasons, list) and not reasons:
             _add(findings, DECISION, "/decision/reasonCodes", "rejection requires reason codes")
 
     if "modelAdvice" in attestation:
@@ -297,6 +354,9 @@ def _validate_attestation(
         if advice:
             if advice.get("advisory") is not True:
                 _add(findings, DECISION, "/modelAdvice/advisory", "model evidence must be advisory")
+            model = advice.get("model")
+            if not isinstance(model, str) or not (3 <= len(model.strip()) <= 200):
+                _add(findings, DECISION, "/modelAdvice/model", "valid model identifier required")
             _digest(advice.get("findingsDigest"), "/modelAdvice/findingsDigest", findings, CHECKS)
 
     validity = _closed(
@@ -314,7 +374,7 @@ def _validate_attestation(
             _add(findings, TIME, "/validity", "validity must be positive and at most 24 hours")
         if issued and any(check_time > issued for check_time in completed):
             _add(findings, TIME, "/checks", "checks must complete before issuance")
-        if at and (at < issued or at >= expires):
+        if at and issued and expires and (at < issued or at >= expires):
             _add(findings, TIME, "/validity", "attestation is not current")
 
     anti_replay = _closed(
@@ -333,7 +393,7 @@ def _validate_attestation(
         if anti_replay.get("singleUse") is not True:
             _add(findings, REPLAY, "/antiReplay/singleUse", "attestation must be single-use")
         audience = anti_replay.get("audience")
-        if not isinstance(audience, str) or not audience.startswith("validation://audience/"):
+        if not isinstance(audience, str) or not AUDIENCE_URI.fullmatch(audience):
             _add(findings, REPLAY, "/antiReplay/audience", "exact audience required")
 
     signature = _closed(
@@ -346,7 +406,8 @@ def _validate_attestation(
     if signature:
         if signature.get("scheme") not in {"sigstore", "ed25519"}:
             _add(findings, SIGNATURE, "/signature/scheme", "unsupported signature scheme")
-        if signature.get("keyId") != issuer_key:
+        sig_key = signature.get("keyId")
+        if not isinstance(sig_key, str) or not (3 <= len(sig_key) <= 200) or sig_key != issuer_key:
             _add(findings, SIGNATURE, "/signature/keyId", "signature key must match issuer")
         _digest(signature.get("valueDigest"), "/signature/valueDigest", findings, SIGNATURE)
 
@@ -364,7 +425,12 @@ def _validate_attestation(
         )
         if verifier.get("kind") != "protected-verifier":
             _add(findings, SIGNATURE, "/verification/verifier", "protected verifier required")
-        if verifier.get("uri") in {issuer.get("uri"), publisher.get("uri")}:
+        forbidden_verifiers = {
+            uri
+            for uri in (issuer.get("uri"), publisher.get("uri"), implementer.get("uri"))
+            if uri
+        }
+        if verifier.get("uri") in forbidden_verifiers:
             _add(findings, INDEPENDENCE, "/verification/verifier", "verifier must be independent")
         for field in ("signatureValid", "issuerTrusted", "subjectResolved"):
             if verification.get(field) is not True:
@@ -389,6 +455,12 @@ def _validate_profile(document: dict[str, Any]) -> list[Finding]:
     profile = _closed(document, "", fields, fields, findings)
     if profile is None:
         return findings
+    profile_id = profile.get("profileId")
+    if not isinstance(profile_id, str) or not PROFILE_ID.fullmatch(profile_id):
+        _add(findings, PROFILE, "/profileId", "invalid validation profile URI")
+    version = profile.get("version")
+    if not isinstance(version, str) or not SEMVER.fullmatch(version):
+        _add(findings, PROFILE, "/version", "exact semantic version required")
     ownership = _closed(
         profile.get("ownership"),
         "/ownership",
@@ -400,10 +472,17 @@ def _validate_profile(document: dict[str, Any]) -> list[Finding]:
         if ownership.get("standardOwner") != "wellmanifest/validation-attestation":
             _add(findings, PROFILE, "/ownership/standardOwner", "wrong standard owner")
         owner = ownership.get("runtimeOwner")
-        if not isinstance(owner, str) or owner.startswith("wellmanifest/"):
+        if not isinstance(owner, str) or not RUNTIME_OWNER.fullmatch(owner):
             _add(findings, PROFILE, "/ownership/runtimeOwner", "runtime must remain external")
         adopts = ownership.get("adopts")
-        if not isinstance(adopts, list) or "wellmanifest/autonomy" not in adopts:
+        adopts_valid = (
+            isinstance(adopts, list)
+            and bool(adopts)
+            and all(isinstance(item, str) and ADOPT_REF.fullmatch(item) for item in adopts)
+            and len(adopts) == len(set(adopts))
+            and "wellmanifest/autonomy" in adopts
+        )
+        if not adopts_valid:
             _add(findings, PROFILE, "/ownership/adopts", "autonomy adoption required")
     bindings = profile.get("bindings")
     if not isinstance(bindings, list):
@@ -421,12 +500,17 @@ def _validate_profile(document: dict[str, Any]) -> list[Finding]:
             findings,
         )
         if binding:
-            stage = str(binding.get("stage"))
-            if stage in observed:
+            stage = binding.get("stage")
+            stage_key = stage if isinstance(stage, str) else repr(stage)
+            if stage_key in observed:
                 _add(findings, PROFILE, f"{path}/stage", "duplicate stage")
-            observed[stage] = str(binding.get("mode"))
+            mode = binding.get("mode")
+            observed[stage_key] = mode if isinstance(mode, str) else repr(mode)
+            uri = binding.get("uri")
+            if not isinstance(uri, str) or not PROCESS_URI.fullmatch(uri):
+                _add(findings, PROFILE, f"{path}/uri", "invalid subactor process URI")
             principal = _principal(binding.get("principal"), f"{path}/principal", findings) or {}
-            principals[stage] = str(principal.get("uri"))
+            principals[stage_key] = str(principal.get("uri"))
     if observed != PROFILE_MODES:
         _add(findings, PROFILE, "/bindings", "exact stage and mode map required")
     if principals.get("publish") in {principals.get("attest"), principals.get("verify")}:
@@ -471,7 +555,7 @@ def apply_invalid_case(case: dict[str, Any], case_path: Path) -> tuple[Any, list
     except (KeyError, ValueError):
         return {}, [Finding(SYNTAX, "/base", "base escapes examples root")]
     try:
-        document = copy.deepcopy(json.loads(base.read_text(encoding="utf-8")))
+        document = copy.deepcopy(_strict_loads(base.read_text(encoding="utf-8")))
         for mutation in case.get("mutations", []):
             parent, key = _pointer_parent(document, mutation["path"])
             if mutation["op"] == "replace":
@@ -486,15 +570,23 @@ def apply_invalid_case(case: dict[str, Any], case_path: Path) -> tuple[Any, list
                     del parent[key]
             else:
                 raise ValueError("unsupported mutation")
-    except (OSError, KeyError, IndexError, TypeError, ValueError, json.JSONDecodeError) as error:
+    except (
+        OSError,
+        KeyError,
+        IndexError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        _StrictJsonError,
+    ) as error:
         return {}, [Finding(SYNTAX, "/mutations", f"invalid case: {error}")]
     return document, findings
 
 
 def load_and_validate(path: Path) -> list[Finding]:
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as error:
+        document = _strict_loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, _StrictJsonError) as error:
         return [Finding(SYNTAX, "", str(error))]
     prefix: list[Finding] = []
     if (
@@ -515,7 +607,7 @@ def self_test() -> int:
     if profile_findings:
         failures.append(f"profile: {[item.code for item in profile_findings]}")
     for path in sorted((EXAMPLES / "invalid").glob("*.json")):
-        case = json.loads(path.read_text(encoding="utf-8"))
+        case = _strict_loads(path.read_text(encoding="utf-8"))
         observed = {item.code for item in load_and_validate(path)}
         expected = set(case.get("expectedCodes", []))
         if not expected <= observed:
@@ -554,8 +646,12 @@ def main(argv: list[str] | None = None) -> int:
     paths = sorted(args.path.rglob("*.json")) if args.path.is_dir() else [args.path]
     failed = False
     for path in paths:
-        document = json.loads(path.read_text(encoding="utf-8"))
-        findings = validate_document(document, at=at, expected=expected)
+        try:
+            document = _strict_loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, _StrictJsonError) as error:
+            findings = [Finding(SYNTAX, "", str(error))]
+        else:
+            findings = validate_document(document, at=at, expected=expected)
         for finding in findings:
             print(f"{path}: {finding.render()}")
         failed = failed or bool(findings)
