@@ -29,9 +29,7 @@ class AttestationConformanceTests(unittest.TestCase):
         )
 
     def codes(self, document: dict, **kwargs: object) -> set[str]:
-        return {
-            finding.code for finding in attestation_check.validate_document(document, **kwargs)
-        }
+        return {finding.code for finding in attestation_check.validate_document(document, **kwargs)}
 
     def test_valid_attestation_and_profile_pass(self) -> None:
         self.assertEqual(set(), self.codes(self.valid))
@@ -143,6 +141,40 @@ class AttestationConformanceTests(unittest.TestCase):
             self.assertEqual([attestation_check.SYNTAX], [item.code for item in findings])
             self.assertEqual(1, attestation_check.main(["validate", str(dup_path)]))
 
+            link_path = Path(directory) / "symlink.json"
+            link_path.symlink_to(self.valid_path)
+            link_findings = attestation_check.load_and_validate(link_path)
+            self.assertEqual([attestation_check.SYNTAX], [item.code for item in link_findings])
+            self.assertEqual(1, attestation_check.main(["validate", str(link_path)]))
+            self.assertEqual(1, attestation_check.main(["validate", directory]))
+
+            deep_path = Path(directory) / "deep.json"
+            deep_path.write_text('{"a":' * 5000 + "1" + "}" * 5000, encoding="utf-8")
+            deep_findings = attestation_check.load_and_validate(deep_path)
+            self.assertEqual([attestation_check.SYNTAX], [item.code for item in deep_findings])
+            self.assertIn("nesting depth", deep_findings[0].message)
+            self.assertEqual(1, attestation_check.main(["validate", str(deep_path)]))
+
+            empty_dir = Path(directory) / "empty"
+            empty_dir.mkdir()
+            self.assertEqual(1, attestation_check.main(["validate", str(empty_dir)]))
+
+    def test_unhashable_nested_fields_and_module_line_budgets(self) -> None:
+        for mod_name in ("attestation_check.py", "attestation_primitives.py"):
+            lines = len((ROOT / "src" / mod_name).read_text(encoding="utf-8").splitlines())
+            self.assertLess(lines, 500, f"{mod_name} has {lines} lines")
+
+        mutation = copy.deepcopy(self.valid)
+        mutation["issuer"]["principal"]["kind"] = {"unhashable": 1}
+        mutation["checks"][0]["conclusion"] = ["unhashable"]
+        mutation["decision"]["outcome"] = {"unhashable": 1}
+        mutation["signature"]["scheme"] = ["unhashable"]
+        codes = self.codes(mutation)
+        self.assertIn(attestation_check.SYNTAX, codes)
+        self.assertIn(attestation_check.CHECKS, codes)
+        self.assertIn(attestation_check.DECISION, codes)
+        self.assertIn(attestation_check.SIGNATURE, codes)
+
     def test_exact_head_and_base_are_runtime_bound(self) -> None:
         expected = {"headSha": "f" * 40, "baseSha": self.valid["subject"]["baseSha"]}
         self.assertIn(attestation_check.SUBJECT, self.codes(self.valid, expected=expected))
@@ -197,15 +229,23 @@ class AttestationConformanceTests(unittest.TestCase):
 
     def test_schema_is_closed_draft_2020_12(self) -> None:
         schema = json.loads(
-            (ROOT / "schemas" / "validation-attestation.schema.json").read_text(
-                encoding="utf-8"
-            )
+            (ROOT / "schemas" / "validation-attestation.schema.json").read_text(encoding="utf-8")
         )
         self.assertEqual("https://json-schema.org/draft/2020-12/schema", schema["$schema"])
         for name in (
-            "attestation", "profile", "principal", "issuer", "subject", "check",
-            "decision", "modelAdvice", "validity", "antiReplay", "signature",
-            "verification", "binding",
+            "attestation",
+            "profile",
+            "principal",
+            "issuer",
+            "subject",
+            "check",
+            "decision",
+            "modelAdvice",
+            "validity",
+            "antiReplay",
+            "signature",
+            "verification",
+            "binding",
         ):
             self.assertFalse(schema["$defs"][name]["additionalProperties"])
 
