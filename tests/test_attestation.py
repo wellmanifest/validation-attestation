@@ -160,9 +160,13 @@ class AttestationConformanceTests(unittest.TestCase):
             self.assertEqual(1, attestation_check.main(["validate", str(empty_dir)]))
 
     def test_unhashable_nested_fields_and_module_line_budgets(self) -> None:
-        for mod_name in ("attestation_check.py", "attestation_primitives.py"):
+        for mod_name in ("attestation_io.py", "attestation_check.py", "attestation_primitives.py"):
             lines = len((ROOT / "src" / mod_name).read_text(encoding="utf-8").splitlines())
             self.assertLess(lines, 500, f"{mod_name} has {lines} lines")
+        test_lines = len(
+            (ROOT / "tests" / "test_attestation.py").read_text(encoding="utf-8").splitlines()
+        )
+        self.assertLess(test_lines, 500, f"test_attestation.py has {test_lines} lines")
 
         mutation = copy.deepcopy(self.valid)
         mutation["issuer"]["principal"]["kind"] = {"unhashable": 1}
@@ -248,6 +252,71 @@ class AttestationConformanceTests(unittest.TestCase):
             "binding",
         ):
             self.assertFalse(schema["$defs"][name]["additionalProperties"])
+
+    def test_symlink_parent_traversal_json_overflow_rfc3339_subseconds_and_secrets(self) -> None:
+        import os
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for idx, bad_raw in enumerate(
+                (
+                    '{"x": ' + ("9" * 5000) + "}",
+                    '{"x": 1e999}',
+                    '{"x": "\\ud800"}',
+                )
+            ):
+                bad_file = root / f"bad-{idx}.json"
+                bad_file.write_text(bad_raw, encoding="utf-8")
+                findings = attestation_check.load_and_validate(bad_file)
+                self.assertEqual([attestation_check.SYNTAX], [item.code for item in findings])
+                self.assertEqual(1, attestation_check.main(["validate", str(bad_file)]))
+
+            real_sub = root / "real_sub"
+            real_sub.mkdir()
+            sibling = root / "sibling"
+            sibling.mkdir()
+            root_doc = root / "doc.json"
+            root_doc.write_bytes(self.valid_path.read_bytes())
+            nested_doc = real_sub / "doc.json"
+            nested_doc.write_bytes(self.valid_path.read_bytes())
+            sym_sub = root / "sym_sub"
+            sym_sub.symlink_to(real_sub)
+
+            for bad_path in (sym_sub / "doc.json", Path(f"{sym_sub}/../doc.json")):
+                res = attestation_check.load_and_validate(bad_path)
+                self.assertEqual([attestation_check.SYNTAX], [item.code for item in res])
+
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(sibling)
+                res_rel = attestation_check.load_and_validate(Path("../sym_sub/doc.json"))
+                self.assertEqual([attestation_check.SYNTAX], [item.code for item in res_rel])
+            finally:
+                os.chdir(old_cwd)
+
+        _, abs_base_findings = attestation_check.apply_invalid_case(
+            {"base": str(self.valid_path), "mutations": []},
+            ROOT / "examples" / "invalid" / "synthetic.json",
+        )
+        self.assertEqual([attestation_check.SYNTAX], [item.code for item in abs_base_findings])
+
+        nano = copy.deepcopy(self.valid)
+        orig_ver = nano["verification"]["verifiedAt"]
+        nano["verification"]["verifiedAt"] = orig_ver[:-1] + ".123456789Z"
+        self.assertEqual(set(), self.codes(nano))
+        nano_bad = copy.deepcopy(self.valid)
+        nano_bad["verification"]["verifiedAt"] = orig_ver[:-1] + ".1234567890Z"
+        self.assertIn(attestation_check.SYNTAX, self.codes(nano_bad))
+
+        ctrl_model = copy.deepcopy(self.valid)
+        ctrl_model["modelAdvice"]["model"] = "gpt-4\x1b[31m"
+        self.assertIn(attestation_check.DECISION, self.codes(ctrl_model))
+
+        gh_pat = "gh" + "p_" + ("A" * 24)
+        leaked = copy.deepcopy(self.valid)
+        leaked["modelAdvice"]["model"] = f"model-{gh_pat}"
+        self.assertIn(attestation_check.SECRET, self.codes(leaked))
+        self.assertIsNone(attestation_check.DIGEST.match("sha256:" + ("a" * 64) + "\n"))
 
 
 if __name__ == "__main__":

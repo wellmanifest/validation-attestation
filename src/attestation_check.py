@@ -17,6 +17,12 @@ _SRC_DIR = str(Path(__file__).resolve().parent)
 if _SRC_DIR not in sys.path:
     sys.path.insert(0, _SRC_DIR)
 
+from attestation_io import (  # noqa: E402
+    _array_index,
+    _check_no_symlink_ancestors,
+    _iter_json_paths,
+    _pointer_parent,
+)
 from attestation_primitives import (  # noqa: E402
     ADOPT_REF,
     ATTESTATION_ID,
@@ -205,7 +211,11 @@ def _validate_attestation(
             if advice.get("advisory") is not True:
                 _add(findings, DECISION, "/modelAdvice/advisory", "model evidence must be advisory")
             model = advice.get("model")
-            if not isinstance(model, str) or not (3 <= len(model.strip()) <= 200):
+            if (
+                not isinstance(model, str)
+                or not (3 <= len(model.strip()) <= 200)
+                or any(ord(ch) < 32 or ord(ch) == 127 or 0x80 <= ord(ch) <= 0x9F for ch in model)
+            ):
                 _add(findings, DECISION, "/modelAdvice/model", "valid model identifier required")
             _digest(advice.get("findingsDigest"), "/modelAdvice/findingsDigest", findings, CHECKS)
 
@@ -310,29 +320,21 @@ def validate_document(
     return [Finding(SYNTAX, "/schema", "unsupported validation schema")]
 
 
-def _array_index(token: str) -> int:
-    if not (token == "0" or (token.isdigit() and not token.startswith("0"))):
-        raise ValueError("invalid JSON Pointer array index")
-    return int(token)
-
-
-def _pointer_parent(document: Any, pointer: str) -> tuple[Any, str]:
-    if not isinstance(pointer, str) or not pointer.startswith("/"):
-        raise ValueError("absolute JSON Pointer required")
-    parts = [part.replace("~1", "/").replace("~0", "~") for part in pointer[1:].split("/")]
-    current = document
-    for part in parts[:-1]:
-        current = current[_array_index(part)] if isinstance(current, list) else current[part]
-    return current, parts[-1]
-
-
 def apply_invalid_case(case: dict[str, Any], case_path: Path) -> tuple[Any, list[Finding]]:
     findings: list[Finding] = []
     try:
         raw_base = case["base"]
-        if not isinstance(raw_base, str) or not raw_base:
-            return {}, [Finding(SYNTAX, "/base", "base must be a non-empty string")]
-        norm_base = Path(os.path.normpath(case_path.parent / raw_base))
+        if (
+            not isinstance(raw_base, str)
+            or not raw_base.strip()
+            or any(ord(ch) < 32 or ord(ch) == 127 or 0x80 <= ord(ch) <= 0x9F for ch in raw_base)
+            or Path(raw_base).is_absolute()
+        ):
+            return {}, [Finding(SYNTAX, "/base", "base must be a relative non-empty string")]
+        case_abs = _check_no_symlink_ancestors(case_path, include_self=False)
+        candidate = case_abs.parent / raw_base
+        _check_no_symlink_ancestors(candidate, include_self=True)
+        norm_base = Path(os.path.normpath(candidate))
         rel = norm_base.relative_to(EXAMPLES)
         probe = EXAMPLES
         for part in rel.parts:
@@ -340,6 +342,8 @@ def apply_invalid_case(case: dict[str, Any], case_path: Path) -> tuple[Any, list
             if probe.is_symlink():
                 return {}, [Finding(SYNTAX, "/base", "base cannot traverse symlinks")]
         base = probe
+    except StrictJsonError:
+        return {}, [Finding(SYNTAX, "/base", "base cannot traverse symlinks")]
     except (KeyError, ValueError):
         return {}, [Finding(SYNTAX, "/base", "base escapes examples root")]
     try:
@@ -387,28 +391,8 @@ def load_and_validate(path: Path) -> list[Finding]:
         isinstance(document, dict)
         and document.get("schema") == "wellmanifest.validation/invalid-case/v1"
     ):
-        document, prefix = apply_invalid_case(document, path.resolve())
+        document, prefix = apply_invalid_case(document, Path(os.path.abspath(path)))
     return prefix + validate_document(document)
-
-
-def _iter_json_paths(target: Path) -> list[Path]:
-    if target.is_symlink() or not target.is_dir():
-        return [target]
-    discovered: list[Path] = []
-    for root_dir, dirnames, filenames in os.walk(target, followlinks=False):
-        root_path = Path(root_dir)
-        kept_dirs: list[str] = []
-        for dirname in sorted(dirnames):
-            candidate_dir = root_path / dirname
-            if candidate_dir.is_symlink():
-                discovered.append(candidate_dir)
-            else:
-                kept_dirs.append(dirname)
-        dirnames[:] = kept_dirs
-        for name in sorted(filenames):
-            if name.endswith(".json"):
-                discovered.append(root_path / name)
-    return discovered
 
 
 def self_test() -> int:

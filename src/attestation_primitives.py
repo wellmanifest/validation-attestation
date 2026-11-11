@@ -2,19 +2,29 @@
 
 from __future__ import annotations
 
-import json
-import os
 import re
-import stat
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+_SRC_DIR = str(Path(__file__).resolve().parent)
+if _SRC_DIR not in sys.path:
+    sys.path.insert(0, _SRC_DIR)
+
+from attestation_io import (  # noqa: E402
+    _DENIED_FIELD_MARKERS,
+    _SENSITIVE_RE,
+    MAX_ATTESTATION_BYTES,
+    MAX_JSON_DEPTH,
+    StrictJsonError,
+    _safe_read_json,
+    _strict_loads,
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = (ROOT / "examples").resolve()
-MAX_ATTESTATION_BYTES = 4 * 1024 * 1024
-MAX_JSON_DEPTH = 64
 
 SYNTAX = "ATTEST-SYNTAX-001"
 SUBJECT = "ATTEST-SUBJECT-001"
@@ -27,21 +37,23 @@ SIGNATURE = "ATTEST-SIGNATURE-001"
 SECRET = "ATTEST-SECRET-001"
 PROFILE = "ATTEST-PROFILE-001"
 
-DIGEST = re.compile(r"^sha256:[a-f0-9]{64}$")
-SHA = re.compile(r"^[a-f0-9]{40}$")
-PRINCIPAL_URI = re.compile(r"^validation://principal/[a-z0-9][a-z0-9._/-]*$")
-ATTESTATION_ID = re.compile(r"^validation://attestation/[a-z0-9][a-z0-9._/-]*$")
-AUDIENCE_URI = re.compile(r"^validation://audience/[a-z0-9][a-z0-9._/-]*$")
-PROFILE_ID = re.compile(r"^validation://profile/[a-z0-9][a-z0-9._/-]*$")
-PROCESS_URI = re.compile(r"^subactor://process/[a-z0-9][a-z0-9._/-]*$")
-ISSUER_KEY_ID = re.compile(r"^[a-z][a-z0-9._:/-]{2,200}$")
-TICKET_ID = re.compile(r"^ticket-[0-9]{3,}$")
-CORRELATION_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{7,127}$")
-REASON_CODE = re.compile(r"^[A-Z][A-Z0-9-]{2,80}$")
-SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-RUNTIME_OWNER = re.compile(r"^(subactor|semcod)/[a-z0-9][a-z0-9._/-]*$")
-ADOPT_REF = re.compile(r"^wellmanifest/[a-z0-9][a-z0-9._/-]*$")
-RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:[Zz]|[+-]\d{2}:\d{2})$")
+DIGEST = re.compile(r"\Asha256:[a-f0-9]{64}\Z")
+SHA = re.compile(r"\A[a-f0-9]{40}\Z")
+PRINCIPAL_URI = re.compile(r"\Avalidation://principal/[a-z0-9][a-z0-9._/-]*\Z")
+ATTESTATION_ID = re.compile(r"\Avalidation://attestation/[a-z0-9][a-z0-9._/-]*\Z")
+AUDIENCE_URI = re.compile(r"\Avalidation://audience/[a-z0-9][a-z0-9._/-]*\Z")
+PROFILE_ID = re.compile(r"\Avalidation://profile/[a-z0-9][a-z0-9._/-]*\Z")
+PROCESS_URI = re.compile(r"\Asubactor://process/[a-z0-9][a-z0-9._/-]*\Z")
+ISSUER_KEY_ID = re.compile(r"\A[a-z][a-z0-9._:/-]{2,200}\Z")
+TICKET_ID = re.compile(r"\Aticket-[0-9]{3,}\Z")
+CORRELATION_ID = re.compile(r"\A[a-z0-9][a-z0-9._:-]{7,127}\Z")
+REASON_CODE = re.compile(r"\A[A-Z][A-Z0-9-]{2,80}\Z")
+SEMVER = re.compile(r"\A[0-9]+\.[0-9]+\.[0-9]+\Z")
+RUNTIME_OWNER = re.compile(r"\A(subactor|semcod)/[a-z0-9][a-z0-9._/-]*\Z")
+ADOPT_REF = re.compile(r"\Awellmanifest/[a-z0-9][a-z0-9._/-]*\Z")
+RFC3339 = re.compile(
+    r"\A\d{4}-\d{2}-\d{2}[Tt]\d{2}:\d{2}:\d{2}(?:\.(\d{1,9}))?(?:[Zz]|[+-]\d{2}:\d{2})\Z"
+)
 PRINCIPAL_KINDS = {
     "validator-app",
     "protected-verifier",
@@ -72,18 +84,55 @@ SUBJECT_FIELDS = {
     "profileDigest",
     "changeDigest",
 }
-_DENIED_FIELD_MARKERS = (
-    "tok" + "en",
-    "sec" + "ret",
-    "pass" + "word",
-    "credential",
-    "privatekey",
-    "api" + "key",
-)
 
-
-class StrictJsonError(ValueError):
-    """Raised when raw JSON violates duplicate-key, finite-number, or regular-file rules."""
+__all__ = [
+    "ADOPT_REF",
+    "ATTESTATION_ID",
+    "AUDIENCE_URI",
+    "CHECKS",
+    "CHECK_CONCLUSIONS",
+    "CORRELATION_ID",
+    "DECISION",
+    "DIGEST",
+    "EXAMPLES",
+    "Finding",
+    "INDEPENDENCE",
+    "ISSUER_KEY_ID",
+    "MAX_ATTESTATION_BYTES",
+    "MAX_JSON_DEPTH",
+    "PRINCIPAL_KINDS",
+    "PRINCIPAL_URI",
+    "PROCESS_URI",
+    "PROFILE",
+    "PROFILE_ID",
+    "PROFILE_MODES",
+    "REASON_CODE",
+    "REPLAY",
+    "RFC3339",
+    "ROOT",
+    "RUNTIME_OWNER",
+    "SECRET",
+    "SEMVER",
+    "SHA",
+    "SIGNATURE",
+    "SUBJECT",
+    "SUBJECT_FIELDS",
+    "SYNTAX",
+    "StrictJsonError",
+    "TICKET_ID",
+    "TIME",
+    "_add",
+    "_closed",
+    "_digest",
+    "_principal",
+    "_safe_read_json",
+    "_scan_secrets",
+    "_strict_loads",
+    "_time",
+    "_validate_checks",
+    "_validate_profile",
+    "_validate_subject",
+]
 
 
 @dataclass(frozen=True)
@@ -99,60 +148,6 @@ class Finding:
 
 def _add(findings: list[Finding], code: str, path: str, message: str) -> None:
     findings.append(Finding(code, path, message))
-
-
-def _strict_loads(raw: str) -> Any:
-    def _no_duplicates(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-        obj: dict[str, Any] = {}
-        for key, value in pairs:
-            if key in obj:
-                raise StrictJsonError(f"duplicate JSON key {key!r}")
-            obj[key] = value
-        return obj
-
-    def _no_constants(constant_name: str) -> Any:
-        raise StrictJsonError(f"non-finite JSON constant {constant_name}")
-
-    try:
-        parsed = json.loads(raw, object_pairs_hook=_no_duplicates, parse_constant=_no_constants)
-    except RecursionError as error:
-        raise StrictJsonError("JSON nesting depth exceeded") from error
-    stack: list[tuple[Any, int]] = [(parsed, 0)]
-    while stack:
-        current, depth = stack.pop()
-        if depth > MAX_JSON_DEPTH:
-            raise StrictJsonError("JSON nesting depth exceeded")
-        if isinstance(current, dict):
-            stack.extend(
-                (val, depth + 1) for val in current.values() if isinstance(val, (dict, list))
-            )
-        elif isinstance(current, list):
-            stack.extend((val, depth + 1) for val in current if isinstance(val, (dict, list)))
-    return parsed
-
-
-def _safe_read_json(path: Path) -> Any:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
-    fd = os.open(os.fspath(path), flags)
-    try:
-        st = os.fstat(fd)
-        if not stat.S_ISREG(st.st_mode):
-            raise StrictJsonError("input must be a regular file")
-        if st.st_size > MAX_ATTESTATION_BYTES:
-            raise StrictJsonError("input exceeds maximum byte budget")
-        chunks: list[bytes] = []
-        total = 0
-        while True:
-            chunk = os.read(fd, 65536)
-            if not chunk:
-                break
-            total += len(chunk)
-            if total > MAX_ATTESTATION_BYTES:
-                raise StrictJsonError("input exceeds maximum byte budget")
-            chunks.append(chunk)
-    finally:
-        os.close(fd)
-    return _strict_loads(b"".join(chunks).decode("utf-8"))
 
 
 def _closed(
@@ -175,10 +170,19 @@ def _closed(
 
 
 def _time(value: Any, path: str, findings: list[Finding]) -> datetime | None:
-    if not isinstance(value, str) or not RFC3339.fullmatch(value):
+    if not isinstance(value, str):
+        _add(findings, SYNTAX, path, "must be an RFC3339 timestamp")
+        return None
+    match = RFC3339.fullmatch(value)
+    if not match:
         _add(findings, SYNTAX, path, "must be an RFC3339 timestamp")
         return None
     normalized = value[:-1] + "+00:00" if value.endswith(("Z", "z")) else value
+    frac = match.group(1)
+    if frac and len(frac) > 6:
+        tz_len = 6
+        prefix_end = len(normalized) - tz_len - (len(frac) + 1)
+        normalized = f"{normalized[:prefix_end]}.{frac[:6]}{normalized[-tz_len:]}"
     try:
         parsed = datetime.fromisoformat(normalized)
     except ValueError:
@@ -209,20 +213,23 @@ def _digest(value: Any, path: str, findings: list[Finding], code: str = SUBJECT)
 
 
 def _scan_secrets(value: Any, path: str, findings: list[Finding], depth: int = 0) -> None:
-    if depth > 64:
-        _add(findings, SYNTAX, path, "maximum JSON nesting depth exceeded")
-        return
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            normalized = re.sub(r"[^a-z]", "", str(key).lower())
-            if any(part in normalized for part in _DENIED_FIELD_MARKERS):
-                _add(findings, SECRET, f"{path}/{key}", "secret-bearing field is forbidden")
-            _scan_secrets(nested, f"{path}/{key}", findings, depth + 1)
-    elif isinstance(value, list):
-        for index, nested in enumerate(value):
-            _scan_secrets(nested, f"{path}/{index}", findings, depth + 1)
-    elif isinstance(value, str) and re.search(r"(?i)\bbearer\s+[a-z0-9._-]+", value):
-        _add(findings, SECRET, path, "credential-like value is forbidden")
+    stack: list[tuple[Any, str, int]] = [(value, path, depth)]
+    while stack:
+        current, cur_path, cur_depth = stack.pop()
+        if cur_depth > MAX_JSON_DEPTH:
+            _add(findings, SYNTAX, cur_path, "maximum JSON nesting depth exceeded")
+            continue
+        if isinstance(current, dict):
+            for key, nested in reversed(list(current.items())):
+                normalized = re.sub(r"[^a-z]", "", str(key).lower())
+                if any(part in normalized for part in _DENIED_FIELD_MARKERS):
+                    _add(findings, SECRET, f"{cur_path}/{key}", "secret-bearing field is forbidden")
+                stack.append((nested, f"{cur_path}/{key}", cur_depth + 1))
+        elif isinstance(current, list):
+            for index in range(len(current) - 1, -1, -1):
+                stack.append((current[index], f"{cur_path}/{index}", cur_depth + 1))
+        elif isinstance(current, str) and _SENSITIVE_RE.search(current):
+            _add(findings, SECRET, cur_path, "credential-like value is forbidden")
 
 
 def _validate_subject(
