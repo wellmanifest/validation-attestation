@@ -1,0 +1,87 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-009",
+  "summary": "Modularize attestation_check under 500 lines and harden unhashable JSON and file I/O",
+  "workstream": "integration",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-009/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/attestation_check.py",
+    "src/attestation_primitives.py",
+    "tests/test_attestation.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "9cf23b1ffafc27e080e948ed9bb255e64d3e57f5",
+    "targetBranch": "main",
+    "outcome": "Modularize src/attestation_check.py under 500 lines with src/attestation_primitives.py, prevent TypeError crashes on unhashable JSON fields, and enforce O_NOFOLLOW regular-file JSON loading.",
+    "nonGoals": [
+      "Do not change schemas/validation-attestation.schema.json or profiles/subactor-semcod.profile.json wire contracts",
+      "Do not add runtime dependencies"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Factor primitives, strict O_NOFOLLOW JSON loading, and subject/check validators into src/attestation_primitives.py while re-exporting public symbols from src/attestation_check.py.",
+      "components": [
+        {
+          "name": "attestation-semantic-checker",
+          "paths": [
+            "src/attestation_check.py",
+            "src/attestation_primitives.py",
+            "tests/test_attestation.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert this bounded commit via protected PR delivery."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "ruff check src tests",
+          "python3 -m unittest discover -s tests -v"
+        ],
+        "evidence": "project/ticket-009/README.md"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python3 src/attestation_check.py self-test",
+          "python3 -m compileall -q src tests",
+          "./project/governance-check.sh --actor agent",
+          "wellman check"
+        ],
+        "evidence": "project/ticket-009/README.md"
+      }
+    ]
+  }
+}
