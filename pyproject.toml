@@ -13,8 +13,8 @@ target-version = "py311"
 select = ["E", "F", "I", "UP"]
 
 [tool.wellmanifest]
-standard = "0.20.32"
-revision = "b6ba9c21a65a6a5648ecf904b64c3b75295e136f"
+standard = "0.20.163"
+revision = "6738f734d7f19e178996c671c26e4165e8b21d4a"
 gate = "./project/governance-check.sh"
 
 [tool.pytest.ini_options]
